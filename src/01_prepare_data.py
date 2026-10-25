@@ -48,7 +48,7 @@ def download_raw_files():
 
 def week_start(dates):
     """Sunday that starts the MMWR (epidemiological) week containing each date."""
-    return dates - pd.to_timedelta((dates.dt.dayofweek + 1) % 7, unit="D")
+    return dates - pd.to_timedelta((dates.dt.day_of_week + 1) % 7, unit="D")
 
 
 def county_weekly(county_df, counties, start, end):
