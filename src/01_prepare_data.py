@@ -10,7 +10,7 @@ paper can be reproduced exactly.
 
 Outputs
   data/processed/outbreaks_weekly.csv   one row per outbreak-week
-  figures/fig1_outbreak_curves.png      Figure 1 of the paper
+  figures/fig_outbreak_curves.png      case-curve figure of the paper
 
 Run from the project folder:   python src/01_prepare_data.py
 """
@@ -111,7 +111,7 @@ def main():
               f"official={official}  peak={g.cases.max()} "
               f"({g.loc[g.cases.idxmax(), 'week_start'].date()})")
 
-    # ---- Figure 1
+    # ---- case-curve figure
     titles = {"west_texas": "West Texas, 2025 (rash-onset week)",
               "upstate_sc": "Upstate South Carolina, 2025–26 (report week)",
               "short_creek": "Short Creek, UT–AZ, 2025–26 (report week)"}
@@ -122,9 +122,9 @@ def main():
         ax.set_ylabel("Confirmed cases")
         ax.spines[["top", "right"]].set_visible(False)
     axes[-1].set_xlabel("Week")
-    fig.savefig(FIGURES / "fig1_outbreak_curves.png", dpi=200)
+    fig.savefig(FIGURES / "fig_outbreak_curves.png", dpi=200)
     print(f"\nSaved {PROCESSED / 'outbreaks_weekly.csv'}")
-    print(f"Saved {FIGURES / 'fig1_outbreak_curves.png'}")
+    print(f"Saved {FIGURES / 'fig_outbreak_curves.png'}")
 
 
 if __name__ == "__main__":

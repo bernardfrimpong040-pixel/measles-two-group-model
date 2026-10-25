@@ -7,7 +7,7 @@ What this script does
   2. Check 1: what if kindergarten coverage described the WHOLE general
      population?  Computes R0 * s1 for each outbreak.  A value above 1 would
      mean the general population could sustain measles by itself.
-  3. Figure 2: how much two-dose coverage the community itself needs
+  3. Critical-coverage figure: how much two-dose coverage the community itself needs
      (critical coverage c2*, Corollary 1 of the paper) as the mixing
      parameter theta goes from 0 (random mixing) to 1 (fully separate).
      These are illustrative: R0 and s1 are only fixed properly in Stage 3.
@@ -68,7 +68,7 @@ print(f"  With national serology (s1 <= {s1_max}): R0*s1 <= {R0 * s1_max:.2f}")
 print("  Conclusion: school coverage overstates adult susceptibility; s1 must be"
       " estimated from the data (Stage 3).")
 
-# ---------------------------------------------------------------- 3. figure 2
+# ---------------------------------------------------------------- 3. critical-coverage figure
 thetas = np.linspace(0, 1, 201)
 s1_values = [0.02, 0.04, 0.06]          # plausible general-population values
 colors = ["#9ecae1", "#4292c6", "#08306b"]
@@ -99,7 +99,7 @@ axes[0].set_ylabel("two-dose coverage the community needs (%)")
 handles, labels = axes[1].get_legend_handles_labels()
 labels[-1] = "reported community coverage (SC 17%, Short Creek 8%)"
 fig.legend(handles, labels, loc="outside lower center", ncol=4, frameon=False, fontsize=9)
-fig.savefig(FIGURES / "fig2_critical_coverage.png", dpi=200)
+fig.savefig(FIGURES / "fig_critical_coverage.png", dpi=200)
 
 print(f"\nSaved {RESULTS / 'parameter_table.csv'}")
-print(f"Saved {FIGURES / 'fig2_critical_coverage.png'}")
+print(f"Saved {FIGURES / 'fig_critical_coverage.png'}")
