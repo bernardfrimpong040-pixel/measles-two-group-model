@@ -1,0 +1,19 @@
+outbreak,parameter,value,low,high,status,source,note
+all,latent_days,10.0,8.0,12.0,fixed,cdc_clinical,14-day exposure-to-rash minus 4 infectious days before rash; range 8-12 is our sensitivity range
+all,infectious_days,8.0,6.0,9.0,fixed,cdc_clinical,4 days before to 4 days after rash; range is our sensitivity range
+all,R0,15.0,8.0,25.0,estimated,guerra2017,"often quoted as 12-18, but Guerra et al. found estimates vary more widely; wide bounds so the data decide"
+all,eps1,0.93,0.39,1.0,fixed,cdc_vaccine,one MMR dose; CDC range 39-100%
+all,eps2,0.97,0.67,1.0,fixed,cdc_vaccine,two MMR doses; CDC range 67-100%
+all,s1,0.04,0.0,0.08,estimated,lebo2015,upper bound 1 - 0.920 = 0.08 from NHANES seroprevalence (95% CI 90.9-93.0%); 0.04 is a starting guess only
+west_texas,N1,23956.0,21598.0,23956.0,fixed,census_gaines,"Gaines County: 21,598 (2020 census), 23,956 (2025 est.). Cases also occurred in 8 nearby counties (MMWR)"
+west_texas,N2,5000.0,1000.0,15000.0,estimated,crisp2026,"NO published size for the close-knit community (MMWR names none). Estimate from data; 5,000 is a placeholder only"
+west_texas,cov1,0.932,0.773,0.946,fixed,crisp2026,statewide kindergarten MMR 93.2% (2024-25); affected counties ranged 77.3-94.6%
+west_texas,cov2,0.3,0.0,0.8,estimated,fortune2025,no direct measure: Gaines K-12 exemptions ~14% (2023-24) but home-schooled children are NOT counted (DSHS)
+upstate_sc,N1,365857.0,312997.0,365857.0,fixed,census_spartanburg,"Spartanburg County 327,997 (2020), 380,857 (2025 est.) minus the community"
+upstate_sc,N2,15000.0,10000.0,20000.0,fixed,healthbeat2026,SC DPH estimate of the Ukrainian- and Russian-speaking community in Spartanburg County (~90% of cases)
+upstate_sc,cov1,0.889,0.889,0.9,fixed,nejm2026sc,Spartanburg County MMR coverage 88.9%; all-vaccine compliance 90% in 2024-25 (SC Daily Gazette)
+upstate_sc,cov2,0.17,0.17,0.21,fixed,healthbeat2026,"Global Academy (community charter school): 17% fully vaccinated 2024-25, 21% in 2025-26 -- one school as proxy"
+short_creek,N1,511497.0,,,fixed,census_mohave,"Mohave County 228,102 (2025 est.) + Southwest Utah health district >287,000 (NBC) minus the community"
+short_creek,N2,3605.0,3605.0,7547.0,fixed,census_shortcreek,"Hildale 1,127 + Colorado City 2,478 (2020 census). The 2010 total was 7,547; 2020 may be an undercount"
+short_creek,cov1,0.79,0.79,0.93,fixed,nbc2025shortcreek,"Washington County UT kindergarten MMR ~79% (NBC; year not stated) -- weakest number in the table, check against UDHHS"
+short_creek,cov2,0.077,0.077,0.4,fixed,nbc2025shortcreek,"Cottonwood Elementary (Colorado City) kindergarten MMR 7.7% (2024-25, AZ DHS); nearby Masada Charter 40%"
