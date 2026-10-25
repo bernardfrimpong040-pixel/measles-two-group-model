@@ -13,8 +13,8 @@ Everything is in Python. LaTeX is used only for the paper itself.
 | 2 | Every parameter sourced with a citation; first critical-coverage curves | done |
 | 3 | Negative-binomial fits to all three outbreaks; profile likelihoods; identifiability result (Proposition 3) | done |
 | 4 | Time-varying transmission; network size vs. response (AIC); sensitivity analysis (OAT refits, elasticities, LHS–PRCC) | done |
-| 5 | Optimal control: timing of catch-up vaccination and isolation; counterfactuals | next |
-| 6 | Write-up and submission (target 31 Dec 2026) | |
+| 5 | Optimal control of vaccination and isolation (Pontryagin, forward-backward sweep); timing counterfactuals; realistic scenarios | done |
+| 6 | Introduction and literature review, discussion, abstract; number checker; journal version (Bulletin of Mathematical Biology); cover letter | done |
 
 ## Folder layout
 
@@ -33,6 +33,10 @@ measles_paper/
     04_fit_outbreaks.py             fits, profiles, Texas coverage check, 2 figures (Stage 3)
     05_time_varying.py              network vs. response: 3 explanations compared (Stage 4)
     06_sensitivity.py               OAT refits, elasticities, LHS-PRCC (Stage 4)
+    control.py                      controlled model, doses, Pontryagin sweep (Stage 5)
+    07_control.py                   optimal strategies, timing, scenarios, frontier (Stage 5)
+    08_check_control.py             8 checks of the control code, Proposition 4 and optimality (Stages 5-6)
+    09_check_paper_numbers.py       checks that every table and key number in main.tex matches results/ (Stage 6)
   data/raw/                         JHU files (downloaded automatically; not on GitHub)
   data/processed/outbreaks_weekly.csv
   results/
@@ -45,6 +49,13 @@ measles_paper/
     sensitivity_oat.csv             Stage 4: one-at-a-time refits
     elasticities.csv                Stage 4: normalised sensitivity indices
     prcc.csv                        Stage 4: LHS-PRCC
+    control_strategies.csv          Stage 5: optimal strategies from detection
+    control_profiles.csv            Stage 5: optimal controls day by day
+    control_timing.csv              Stage 5: response start vs cases averted
+    control_scenarios.csv           Stage 5: realistic scenarios
+    control_frontier.csv            Stage 5: doses vs cases averted
+    under_reporting.csv             Stage 6: refits with case counts x2 (SC) and x3 (Short Creek)
+    nonconvexity_sc.csv             Stage 6: constant isolation in SC (non-convexity table)
   figures/
     fig_outbreak_curves.png         weekly case data
     fig_critical_coverage.png       coverage the community needs vs. mixing (illustrative)
@@ -52,11 +63,18 @@ measles_paper/
     fig_model_fits.png              data vs. fitted model
     fig_time_varying_fits.png       the three explanations vs. data
     fig_prcc.png                    PRCC bars for R_v and c2*
+    fig_optimal_controls.png        epidemic curves and optimal controls
+    fig_control_timing.png          cases averted vs response start
+    fig_dose_frontier.png           doses vs cases averted
   paper/                            the LaTeX paper (kept local; not on GitHub)
     main.tex                        complete paper draft (Overleaf: pdfLaTeX)
     references.bib
-    figures/                        copies of the six figures, for Overleaf
-    main.pdf                        compiled draft, for reading
+    figures/                        copies of the nine figures, for Overleaf
+    main.pdf                        compiled working version, for reading
+    make_bmb.py                     builds the journal version from main.tex
+    sn_template/                    Springer Nature class and reference style
+    bmb/                            journal version: main_bmb.tex, .bib, class, style, figures
+    submission/cover_letter.tex     cover letter (and its PDF)
 ```
 
 The `paper/` folder is listed in `.gitignore`, so the paper stays off GitHub
@@ -75,11 +93,15 @@ python src\03_parameter_table.py
 python src\04_fit_outbreaks.py
 python src\05_time_varying.py
 python src\06_sensitivity.py
+python src\07_control.py
+python src\08_check_control.py
+python src\09_check_paper_numbers.py
 ```
 
-Scripts 04, 05 and 06 each run the three outbreaks in parallel and take about
-5–15 minutes each. They print a line as each step finishes. Run them in this
-order: 06 reads the Stage 3 estimates written by 04.
+Scripts 04–07 each run the three outbreaks in parallel. 04–06 take about
+5–15 minutes each and 07 about 15–30 minutes. They print a line as each step
+finishes. Run them in this order: 06, 07 and 08 read the Stage 3 estimates
+written by 04.
 
 First-time setup only: `py -3.13 -m venv .venv`, then activate and
 `pip install -r requirements.txt`.
@@ -203,17 +225,136 @@ The negative-binomial dispersion k could run off towards infinity, where the
 (impossible). `fitting.py` now rejects k above 10,000. Stage 3 results are
 unchanged by the fix; this was checked by rerunning `04_fit_outbreaks.py`.
 
+## Results (Stage 5): what response would have worked?
+
+Two controls in the community network: catch-up vaccination u1 (per day) and isolation
+u2 (share of infectiousness removed). Doses are counted explicitly: a campaign reaches
+every unvaccinated person not currently infectious (S2 + E2 + R2), so doses to people
+already infected or recovered are wasted. Limits: u1 ≤ 0.01/day (intensive; assumption);
+u2 ≤ 0.5 (isolation at rash onset removes at most 4 of 8 infectious days, CDC); 0.8 with
+quarantine (assumption). Observed uptake at the SC community school, 17% → 21% in a year,
+gives u1 = 1.4 × 10⁻⁴/day. The response starts at detection (3 cumulative cases).
+
+**Optimal strategies from detection** (`results/control_strategies.csv`):
+
+| | Vaccination only | Isolation only | Both |
+|---|---|---|---|
+| West Texas (807 cases) | 24.6% averted, 315 doses (175 wasted) | 42.1% | 73.6% |
+| Upstate SC (948) | 77.0%, 882 doses (162 wasted) | 63.1% | 97.5%, 539 doses (9 wasted) |
+| Short Creek (584) | 87.3%, 266 doses | 95.3% | 97.0% |
+
+**Realistic scenarios** (constant from detection): observed uptake averts 0.4%, 1.3%,
+3.1%. Isolation + quarantine (0.8) averts 89.9%, 99.0%, 98.3%.
+
+**Timing** (combined response, % averted when started 0 / 2 / 4 / 8 weeks after
+detection): West Texas 74 / 55 / 36 / 10; SC 98 / 95 / 89 / 62; Short Creek
+97 / 95 / 93 / 84. Delay costs follow R_v.
+
+### Key findings of Stage 5
+
+1. **Proposition 4 (critical isolation):** in the small-community limit, isolation
+   multiplies R_v by (1 − u2), so the isolation needed is 1 − 1/R_v, the same number as
+   h*. Exact values: West Texas 0.684, SC 0.583, Short Creek 0.392 (check 6 in
+   `08_check_control.py`). So isolation at rash onset (≤ 0.5) can stop Short Creek but
+   not West Texas.
+2. **A weak response can be worse than none.** Partial isolation mostly delays
+   infections and even uses *more* isolation-days (SC: 1,868 at u2 = 0.4 vs 79 at 0.7).
+   The optimisation problem is non-convex, so the sweep runs from 3 starting controls.
+3. **The two controls are complements:** isolation slows the outbreak so vaccination
+   reaches people before they are infected (SC: 9 wasted doses with both, 162 without).
+4. **Optimal campaigns stop early**, saving 57–92% of doses compared with a constant
+   campaign running for the whole horizon, for the same benefit.
+
+### Pitfalls found and fixed in Stage 5
+
+- **Local optimum:** a sweep started from no control stays at "do nothing". Fixed by
+  starting from none, half and full control and keeping the best.
+- **Short horizon:** a response holding R_v just above 1 makes a slow burn; stopping
+  8 weeks after the data undercounted SC isolation-only cases (190 vs 350). Fixed with a
+  3-year horizon (incidence below 0.001/day at the end; 6 years gives the same totals).
+- **Regularisation driving the answer:** a plain eta·u²/2 term kept isolation at 10%
+  because early on there are few cases. Fixed by scaling it by the people reached.
+
+### Checks (`08_check_control.py`)
+
+1. Controlled model with no isolation equals the original model exactly.
+2. Complex-step Jacobian vs finite differences: 4 × 10⁻¹⁰.
+3. Hand-derived adjoint equations (as printed in the paper) vs code: 10⁻¹⁵.
+4. Adjoint gradient vs re-running the model: 5 × 10⁻⁵ (vaccination), 4 × 10⁻⁶ (isolation).
+5. No control: RK4 reproduces the Stage 3 SC fit (945.85 cases).
+6. Proposition 4 against the exact eigenvalue.
+7. Each optimal combined strategy beats all 121 constant strategies (Stage 6).
+8. Non-convexity table for South Carolina, saved to results/nonconvexity_sc.csv (Stage 6).
+
 ### Known weaknesses
 
+- Isolation + quarantine at 0.8 assumes high compliance, which may not hold in
+  communities that distrust public-health authorities.
 - South Carolina's two-phase timing is not captured; most likely a reporting artefact.
   A rash-onset series for South Carolina would settle it.
 - Short Creek's several waves: the model fits one smooth curve.
 - The case curves cannot fully exclude some contribution from the public-health
   response to how each outbreak ended.
 
-### Inputs to verify before submission
+## Stage 6: final paper and submission
 
-- Washington County, UT coverage (79%): taken from a news report with no year stated.
-- Hildale 2020 census count (1,127, down from 2,726 in 2010): possible undercount.
-- West Texas: there is no published size for the affected community.
-- Bibliography entries marked `CHECK` in `paper/references.bib`.
+### What was added
+- **Introduction** with a verified literature review (heterogeneity and preferential
+  mixing: Glasser 2016, Feng 2015, Masters 2020, Liu 2015; 2025 outbreak models:
+  Chukwu 2026, Lao 2025, González-Parra 2025; identifiability: Tuncer & Le 2018,
+  Chowell 2017; measles optimal control: Jaharuddin & Bakhtiar 2020, Kuddus 2023,
+  Aldila 2025; projections: Kiang 2025).
+- **Discussion** (summary, relation to previous work, implications, limitations, future
+  work), **Conclusion**, **abstract** (246 words) and **keywords**.
+- **Declarations**: data and code availability, funding, competing interests, ethics,
+  AI use (described in Methods, Section 3.5, as the journal requires), contributions.
+- **Under-reporting test**: with case counts doubled (SC) or tripled (Short Creek),
+  R_v and h* barely move (2.40 → 2.42, 1.64 → 1.63; 58.3% → 58.6%, 39.2% → 39.6%);
+  only the fitted network grows.
+- **Check 7**: each optimal combined strategy beats all 121 constant strategies
+  (J = 275.0 vs 310.1, 44.1 vs 60.2, 20.0 vs 26.8).
+- **`09_check_paper_numbers.py`**: rebuilds every table and 86 key numbers from
+  `results/` and searches for them in `main.tex`. It caught three errors that were then
+  fixed (a 70% that should be 71%, and two double-rounded table entries).
+
+### Journal: Bulletin of Mathematical Biology (back-up: Mathematical Biosciences)
+- Fit: theory + fitted outbreaks + optimal control. No fee on the subscription route
+  (open access would cost US$3,190). LaTeX accepted. Median 8 days to first decision.
+- Requirements met: abstract 150–250 words; 4–6 keywords; data availability statement;
+  Statements and Declarations; AI use documented in the Methods.
+- `paper/bmb/` holds the journal version, generated by `make_bmb.py`. Always edit
+  `paper/main.tex` and regenerate; never edit `main_bmb.tex` by hand.
+
+### Submission checklist
+1. Confirm the two references I could not open (they compile, but are incomplete):
+   - `nejm2026sc`: open https://www.nejm.org/doi/full/10.1056/NEJMc2605131 and add the
+     authors, volume, issue and pages.
+   - `nbc2025shortcreek`: confirm the headline, authors (probably Marina Kopf and Joe
+     Murphy) and date (late September 2025).
+2. Read the whole paper once, slowly, as its author: every sentence must be one you can
+   defend. Check that the AI-use statement in Section 3.5 is accurate for how you worked.
+3. Make the GitHub repository **public**, then archive it on Zenodo (zenodo.org → log in
+   with GitHub → enable the repository → create a release) to get a DOI. Add the DOI
+   to the Data availability paragraph.
+4. Run the full pipeline once more from a clean folder, then
+   `python src\09_check_paper_numbers.py` (must say 86 of 86).
+5. In `paper/`: `python make_bmb.py`, then compile `bmb/main_bmb.tex` on Overleaf
+   (pdfLaTeX) and read the PDF.
+6. Fill in the date on `submission/cover_letter.tex`.
+7. Submit at the journal's site (Springer Nature submission system): upload
+   `main_bmb.tex`, `references.bib`, `sn-jnl.cls`, `sn-mathphys-num.bst`, the nine figure
+   PNGs, and the compiled PDF; paste the cover letter.
+8. Optional suggested reviewers (look up current affiliations and emails yourself, and
+   avoid anyone you have worked with): authors of the papers we build on, for example
+   Zhilan Feng or John Glasser (preferential mixing and measles), Gerardo Chowell
+   (fitting outbreak models), Necibe Tuncer (identifiability), Marisa Eisenberg
+   (measles clustering, identifiability).
+
+### Inputs to state as limitations (already in the paper)
+- Washington County, UT (79%) is NBC News's own figure (with Stanford University), with
+  no school year given. The nearest official figure is Utah DHHS 2021/22: 84.4% of
+  kindergartners adequately immunised (not MMR-specific). It only sets the general
+  population's coverage, which the fit does not use (s1 is estimated).
+- Hildale's 2020 census count is 1,127 (Wikipedia, from data.census.gov); another source
+  gives 1,145. It only affects the total population and the network's upper bound.
+- West Texas: no published size or coverage for the affected community.

@@ -23,6 +23,7 @@ C. Over the whole plausible parameter space, which inputs matter most?
 
 Outputs
   results/sensitivity_oat.csv
+  results/under_reporting.csv
   results/elasticities.csv
   results/prcc.csv
   figures/fig_prcc.png
@@ -87,6 +88,31 @@ def oat(name):
                      "theta": par["theta"], "N2eff": par["N2eff"], "s1": par["s1"], **s})
         print(f"[{name}] {label}: R_v {s['Rv']:.2f}  h* {100 * s['share_susceptibles']:.1f}%",
               flush=True)
+    return rows
+
+
+# ---------------------------------------------------------------- A2. under-reporting
+UNDER_REPORTING = {"upstate_sc": 2, "short_creek": 3}   # true cases = factor x reported
+
+
+def under_reporting(name):
+    """If only a fixed share of cases is reported, the true counts are the
+    reported counts times a factor.  Refit with the counts multiplied (and the
+    network allowed to be that much larger) and compare R_v, h* and N2eff.
+    Short Creek: a resident estimated true cases at about 3 x reported (KJZZ)."""
+    factor = UNDER_REPORTING[name]
+    weekly = load_weekly(name)
+    rows = []
+    for mult in (1, factor):
+        setting = base_setting(name)
+        lo, hi = setting["N2eff_bounds"]
+        setting["N2eff_bounds"] = (lo, hi * mult)
+        cases = np.round(mult * biweekly(weekly))
+        par, ll = fit(cases, setting, fixed={"R0": R0_REF}, n_starts=8)
+        s = summaries(par, setting, cases)
+        rows.append({"outbreak": name, "multiplier": mult, "Rv": s["Rv"],
+                     "share_susceptibles": s["share_susceptibles"], "N2eff": par["N2eff"]})
+    print(f"[{name}] under-reporting check done", flush=True)
     return rows
 
 
@@ -187,6 +213,16 @@ def main():
                   f"{r.susceptibles_in_network:6.0f}")
         print(f"    range of h*: {100 * g.share_susceptibles.min():.1f}"
               f"-{100 * g.share_susceptibles.max():.1f}%")
+
+    # A2
+    with Pool(processes=2) as pool:
+        ur = pd.DataFrame([row for rows in pool.map(under_reporting, list(UNDER_REPORTING))
+                           for row in rows])
+    ur.to_csv(RESULTS / "under_reporting.csv", index=False)
+    print("\nA2. UNDER-REPORTING (true cases = multiplier x reported)")
+    for _, r in ur.iterrows():
+        print(f"  {r.outbreak:12s} x{r.multiplier}: R_v {r.Rv:.2f}   h* {100 * r.share_susceptibles:.1f}%"
+              f"   network {r.N2eff:.0f}")
 
     # B
     el = pd.DataFrame([row for n in names for row in elasticities(n)])
