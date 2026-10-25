@@ -33,9 +33,10 @@ from scipy.special import gammaln, expit, logit
 
 from model import rhs, reproduction_number, critical_s2
 
-DAYS_PER_PERIOD = 14          # we fit 2-week totals
+DAYS_PER_PERIOD = 14          # we fit 2-week totals (a setting may override this)
 SIGMA, GAMMA = 1 / 10, 1 / 8  # latent and infectious periods (Stage 2, CDC)
 EPS1, EPS2 = 0.93, 0.97       # vaccine efficacy (Stage 2, CDC)
+SWITCH_DAYS = 3.0             # how quickly a change in transmission takes effect
 
 # Each parameter: (lower bound, upper bound, type of transformation)
 #   "logistic": any real number x -> lower + (upper - lower) * expit(x)
@@ -47,8 +48,11 @@ BOUNDS = {
     "N2eff": None,                       # set per outbreak (see setting)
     "I0":    (None, None, "log"),
     "k":     (None, None, "log"),
+    # Stage 4: transmission is multiplied by m from day tc onwards
+    "m":     (0.05, 5.0, "logistic"),    # m < 1: transmission falls; m > 1: rises
+    "tc":    None,                       # set per outbreak (see setting)
 }
-ORDER = ["R0", "theta", "s1", "N2eff", "I0", "k"]
+ORDER = ["R0", "theta", "s1", "N2eff", "I0", "k", "m", "tc"]
 
 
 # ---------------------------------------------------------------- data
@@ -63,6 +67,9 @@ def biweekly(weekly_cases):
 def _bounds(name, setting):
     if name == "N2eff":
         lo, hi = setting["N2eff_bounds"]
+        return lo, hi, "logistic"
+    if name == "tc":
+        lo, hi = setting["tc_bounds"]
         return lo, hi, "logistic"
     return BOUNDS[name]
 
@@ -113,8 +120,13 @@ def run_model(par, setting, n_periods):
     N2 = par["N2eff"]
     N1 = setting["N_total"] - N2
     c22 = setting["c22"]
-    p = dict(beta=par["R0"] * GAMMA, theta=par["theta"], sigma=SIGMA, gamma=GAMMA,
-             eps1=EPS1, eps2=EPS2, N1=N1, N2=N2)
+    # Stage 4: the sensitivity analysis may override these fixed inputs
+    sigma = setting.get("sigma", SIGMA)
+    gamma = setting.get("gamma", GAMMA)
+    eps2 = setting.get("eps2", EPS2)
+    period = setting.get("period_days", DAYS_PER_PERIOD)
+    p = dict(beta=par["R0"] * gamma, theta=par["theta"], sigma=sigma, gamma=gamma,
+             eps1=EPS1, eps2=eps2, N1=N1, N2=N2)
 
     # General population: s1*N1 susceptible, the rest immune (put in R).
     # Community network: c22 with two doses, the rest unvaccinated;
@@ -123,8 +135,18 @@ def run_model(par, setting, n_periods):
     y0 = [par["s1"] * N1, 0, 0, 0, 0, (1 - par["s1"]) * N1, 0,
           (1 - c22) * N2 - I0, 0, c22 * N2, I0 / 2, I0 / 2, 0, 0]
 
-    t_edges = np.arange(n_periods + 1) * DAYS_PER_PERIOD
-    sol = solve_ivp(rhs, (0, t_edges[-1]), y0, args=(p, (0.0, 0.0)),
+    # Stage 4: transmission multiplied by m from day tc onwards.  The switch
+    # is smooth (logistic, about SWITCH_DAYS wide) so the ODE solver copes.
+    m, tc = par.get("m", 1.0), par.get("tc", 0.0)
+    if m == 1.0:
+        ode = rhs                                   # constant transmission (Stage 3)
+    else:
+        def ode(t, y, p, u):
+            factor = 1 + (m - 1) * expit((t - tc) / SWITCH_DAYS)
+            return rhs(t, y, dict(p, beta=p["beta"] * factor), u)
+
+    t_edges = np.arange(n_periods + 1) * period
+    sol = solve_ivp(ode, (0, t_edges[-1]), y0, args=(p, (0.0, 0.0)),
                     method="LSODA", t_eval=t_edges, rtol=1e-6, atol=1e-6)
     C1, C2 = sol.y[6], sol.y[13]       # cumulative people who became infectious
     return np.diff(C1), np.diff(C2)
@@ -144,6 +166,11 @@ def neg_loglik(x, cases, setting, fixed):
     par = unpack(x, setting, fixed)
     if par["I0"] >= (1 - setting["c22"]) * par["N2eff"]:
         return 1e10                                   # seed larger than the network
+    if par["k"] > 1e4:
+        # Beyond k = 10,000 the negative binomial is a Poisson for these counts,
+        # and the gammaln terms lose precision (the log-likelihood can even turn
+        # positive, which is impossible). Stage 4 bug fix.
+        return 1e10
     try:
         e1, e2 = run_model(par, setting, len(cases))
     except Exception:
@@ -154,29 +181,42 @@ def neg_loglik(x, cases, setting, fixed):
 
 
 # ---------------------------------------------------------------- fitting
-def random_start(setting, rng):
+def random_start(setting, rng, time_varying=False):
     """A random but sensible first guess for every parameter."""
     lo, hi = setting["N2eff_bounds"]
-    return dict(R0=rng.uniform(10, 20), theta=rng.uniform(0.1, 0.6),
-                s1=rng.uniform(0.002, 0.05),
-                N2eff=np.exp(rng.uniform(np.log(lo * 1.5), np.log(hi * 0.5))),
-                I0=np.exp(rng.uniform(np.log(0.5), np.log(10))),
-                k=rng.uniform(1, 10))
+    if hi * 0.5 <= lo * 1.5:               # narrow range (e.g. N2eff held fixed)
+        lo, hi = lo / 1.5, hi / 0.5
+    start = dict(R0=rng.uniform(10, 20), theta=rng.uniform(0.1, 0.6),
+                 s1=rng.uniform(0.002, 0.05),
+                 N2eff=np.exp(rng.uniform(np.log(lo * 1.5), np.log(hi * 0.5))),
+                 I0=np.exp(rng.uniform(np.log(0.5), np.log(10))),
+                 k=rng.uniform(1, 10))
+    if time_varying:                       # Stage 4 only (keeps Stage 3 identical)
+        t_lo, t_hi = setting["tc_bounds"]
+        start["m"] = np.exp(rng.uniform(np.log(0.2), np.log(4)))
+        start["tc"] = rng.uniform(t_lo + 7, t_hi - 7)
+    return start
 
 
-def fit(cases, setting, fixed=None, n_starts=6, warm_start=None, seed=1):
+def fit(cases, setting, fixed=None, n_starts=6, warm_start=None, seed=1,
+        time_varying=False):
     """Maximum-likelihood fit. Returns (parameters, log-likelihood).
 
-    fixed      : parameters held at given values, e.g. {"R0": 15}
-    warm_start : a previous solution to try first (used in profiles)
+    fixed        : parameters held at given values, e.g. {"R0": 15}
+    warm_start   : a previous solution to try first (used in profiles)
+    time_varying : False -> constant transmission (m = 1), as in Stage 3
+                   True  -> also estimate the change m and its day tc
     """
     fixed = dict(fixed or {})
+    if not time_varying:
+        fixed.setdefault("m", 1.0)
+        fixed.setdefault("tc", 0.0)
     rng = np.random.default_rng(seed)
     starts = []
     if warm_start is not None:
         starts.append({**warm_start, **fixed})
     while len(starts) < n_starts:
-        starts.append({**random_start(setting, rng), **fixed})
+        starts.append({**random_start(setting, rng, time_varying), **fixed})
 
     best = None
     for start in starts:
@@ -194,15 +234,27 @@ def summaries(par, setting, cases):
     """Quantities we report for a fitted parameter set."""
     N = setting["N_total"]
     p1 = 1 - par["N2eff"] / N
-    s2 = 1 - EPS2 * setting["c22"]
+    eps2 = setting.get("eps2", EPS2)
+    s2 = 1 - eps2 * setting["c22"]
     Rv = reproduction_number(par["R0"], par["theta"], p1, par["s1"], s2)
     s2_star = critical_s2(par["R0"], par["theta"], p1, par["s1"])
     e1, e2 = run_model(par, setting, len(cases))
-    return dict(
+    out = dict(
         R0_theta=par["R0"] * par["theta"],            # within-network contacts
         Rv=Rv,                                        # reproduction number at the start
-        c2_star=min(1.0, (1 - s2_star) / EPS2),      # two-dose coverage the network needs
+        c2_star=min(1.0, (1 - s2_star) / eps2),      # two-dose coverage the network needs
         share_susceptibles=max(0.0, 1 - s2_star / s2),  # of today's susceptibles, share to immunise
         community_share=e2.sum() / (e1 + e2).sum(),  # model: share of cases in the network
         predicted_total=(e1 + e2).sum(),
+        susceptibles_in_network=par["N2eff"] * s2,   # what the data really pin down
     )
+    # Stage 4: after the change, transmission is m times higher, which is the
+    # same as replacing R0 by m * R0 in every formula.
+    m = par.get("m", 1.0)
+    if m != 1.0:
+        s2_star_after = critical_s2(m * par["R0"], par["theta"], p1, par["s1"])
+        out.update(
+            Rv_after=reproduction_number(m * par["R0"], par["theta"], p1, par["s1"], s2),
+            share_susceptibles_after=max(0.0, 1 - s2_star_after / s2),
+        )
+    return out

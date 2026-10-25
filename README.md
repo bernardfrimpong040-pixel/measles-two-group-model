@@ -12,8 +12,8 @@ Everything is in Python. LaTeX is used only for the paper itself.
 | 1 | Outbreak case data; two-group SV1V2EIR model; reproduction number and critical-coverage proofs, checked numerically | done |
 | 2 | Every parameter sourced with a citation; first critical-coverage curves | done |
 | 3 | Negative-binomial fits to all three outbreaks; profile likelihoods; identifiability result (Proposition 3) | done |
-| 4 | Time-varying transmission; network size vs. response; sensitivity analysis (LHS–PRCC) | next |
-| 5 | Optimal control: timing of catch-up vaccination and isolation; counterfactuals | |
+| 4 | Time-varying transmission; network size vs. response (AIC); sensitivity analysis (OAT refits, elasticities, LHS–PRCC) | done |
+| 5 | Optimal control: timing of catch-up vaccination and isolation; counterfactuals | next |
 | 6 | Write-up and submission (target 31 Dec 2026) | |
 
 ## Folder layout
@@ -29,8 +29,10 @@ measles_paper/
     02_check_reproduction_number.py numerical checks of every formula in Section 2
     parameters.py                   every parameter value with its source (Stage 2)
     03_parameter_table.py           parameter table, check 1, critical-coverage figure (Stage 2)
-    fitting.py                      likelihood, optimiser, summaries (Stage 3)
+    fitting.py                      likelihood, optimiser, summaries (Stages 3-4)
     04_fit_outbreaks.py             fits, profiles, Texas coverage check, 2 figures (Stage 3)
+    05_time_varying.py              network vs. response: 3 explanations compared (Stage 4)
+    06_sensitivity.py               OAT refits, elasticities, LHS-PRCC (Stage 4)
   data/raw/                         JHU files (downloaded automatically; not on GitHub)
   data/processed/outbreaks_weekly.csv
   results/
@@ -39,15 +41,21 @@ measles_paper/
     profile_R0.csv                  Stage 3: R0 profile (identifiability evidence)
     profile_theta.csv               Stage 3: theta profile (confidence intervals)
     texas_coverage_check.csv        Stage 3: West Texas coverage sensitivity
+    time_varying_models.csv         Stage 4: H1/H2/H3 with AIC
+    sensitivity_oat.csv             Stage 4: one-at-a-time refits
+    elasticities.csv                Stage 4: normalised sensitivity indices
+    prcc.csv                        Stage 4: LHS-PRCC
   figures/
     fig_outbreak_curves.png         weekly case data
     fig_critical_coverage.png       coverage the community needs vs. mixing (illustrative)
     fig_profiles.png                R0 profile: fit, best theta, critical coverage
     fig_model_fits.png              data vs. fitted model
+    fig_time_varying_fits.png       the three explanations vs. data
+    fig_prcc.png                    PRCC bars for R_v and c2*
   paper/                            the LaTeX paper (kept local; not on GitHub)
     main.tex                        complete paper draft (Overleaf: pdfLaTeX)
     references.bib
-    figures/                        copies of the four figures, for Overleaf
+    figures/                        copies of the six figures, for Overleaf
     main.pdf                        compiled draft, for reading
 ```
 
@@ -65,10 +73,13 @@ python src\01_prepare_data.py
 python src\02_check_reproduction_number.py
 python src\03_parameter_table.py
 python src\04_fit_outbreaks.py
+python src\05_time_varying.py
+python src\06_sensitivity.py
 ```
 
-`04_fit_outbreaks.py` runs the three outbreaks in parallel and takes about
-5–15 minutes. It prints a line as each step finishes.
+Scripts 04, 05 and 06 each run the three outbreaks in parallel and take about
+5–15 minutes each. They print a line as each step finishes. Run them in this
+order: 06 reads the Stage 3 estimates written by 04.
 
 First-time setup only: `py -3.13 -m venv .venv`, then activate and
 `pip install -r requirements.txt`.
@@ -149,14 +160,56 @@ Fitted with R0 held at 15; brackets are 95% profile-likelihood intervals.
    depend on the community's (often unknown) coverage. That is confirmed by the West
    Texas check.
 
-### Known weaknesses (to address in Stage 4)
+## Results (Stage 4)
 
-- South Carolina: the model gets the size right but not the timing (slow Oct–Nov,
-  then a surge in Dec–Jan). Needs time-varying transmission.
-- Short Creek: several waves; the model fits one smooth curve.
-- Network size vs. public-health response as the reason each outbreak stopped:
-  a constant-rate model cannot tell them apart.
-- Check that estimates hold when fitting cumulative cases instead of 2-week totals.
+### Why did the outbreaks stop? (`05_time_varying.py`)
+
+Transmission may change once by a factor m on day tc. Three explanations, R0 = 15,
+compared by AIC (lower is better; differences under ~2 mean "cannot tell"):
+
+| | H1 network only | H2 response only | H3 network + change |
+|---|---|---|---|
+| West Texas | dAIC 3.2 | 11.2 | 0.0* |
+| Upstate SC | 1.7 | 0.0** | 1.3 (×2.84 on 27 Dec) |
+| Short Creek | 0.0 | 4.1 | 2.6 |
+
+\* Not credible: s1 sits at its 0.08 cap, so the general population sustains spread by
+itself and carries 72% of cases, contradicting the MMWR description.
+\** Not credible: needs 51% of cases outside the community (officials reported ~90%
+inside) and a 95% cut in transmission at the edge of the search range.
+
+The South Carolina H3 change falls in the holiday reporting-backlog week, so it is
+most likely reporting, not transmission. **Conclusion:** a response alone does not
+explain the outbreaks, and H1 (Stage 3) stays the main model.
+
+### Sensitivity (`06_sensitivity.py`)
+
+- **Refits with fixed inputs changed** (latent 8/12 d, infectious 6/9 d, two-dose
+  efficacy 0.93/0.99, weekly data): h* stays within about 4 points of baseline
+  (West Texas 66–70%, SC 55–62%, Short Creek 36–42%). R_v moves most with the
+  latent and infectious periods: the data fix the growth rate, and a longer
+  generation interval means a higher R for the same growth (Wallinga & Lipsitch 2007).
+- **Elasticities** match Proposition 3: R_v index for R0 is exactly 1; c2* index
+  for R0 is 1/(R0·theta − 1) = 1.33, 0.55, 0.34 (computed 1.32, 0.53, 0.33); for
+  efficacy, exactly −1.
+- **LHS–PRCC** (2,000 samples): R_v is driven by theta (0.96), R0 (0.92) and
+  community coverage (−0.80); c2* by R0 (0.79), theta (0.67) and s1 (0.64), and
+  not at all by current coverage (−0.02, p = 0.44), as it should be.
+
+### Bug fixed in Stage 4
+
+The negative-binomial dispersion k could run off towards infinity, where the
+`gammaln` terms lose precision and the log-likelihood can even turn positive
+(impossible). `fitting.py` now rejects k above 10,000. Stage 3 results are
+unchanged by the fix; this was checked by rerunning `04_fit_outbreaks.py`.
+
+### Known weaknesses
+
+- South Carolina's two-phase timing is not captured; most likely a reporting artefact.
+  A rash-onset series for South Carolina would settle it.
+- Short Creek's several waves: the model fits one smooth curve.
+- The case curves cannot fully exclude some contribution from the public-health
+  response to how each outbreak ended.
 
 ### Inputs to verify before submission
 
